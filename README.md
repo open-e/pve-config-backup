@@ -1,6 +1,6 @@
 # pve-config-backup
 
-Backup automation for Proxmox
+Automated backups of Proxmox VE configuration files to NFS storage.
 
 
 ## Before Install
