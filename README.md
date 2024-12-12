@@ -2,12 +2,13 @@
 
 Automated backups of Proxmox VE configuration files to NFS storage.
 
+All following commands are expected to be run with administrative privilages.
 
 ## Before Install
 
 Package `python3-psutil` have to be installed for plugin to work.
 ```bash
-sudo apt install python3-psutil
+apt install python3-psutil
 ```
 
 ## Installation
@@ -15,17 +16,17 @@ sudo apt install python3-psutil
 1. Place script at `/usr/local/bin/pve-config-backup.py`
 2. To install the script properly, please run:
 ```bash
-sudo cp /root/pve-config-backup.py /usr/local/bin/pve-config-backup.py
+cp /root/pve-config-backup.py /usr/local/bin/pve-config-backup.py
 ```
 3. Make script executable:
 
 ```bash
-sudo chmod +x /usr/local/bin/pve-config-backup.py
+chmod +x /usr/local/bin/pve-config-backup.py
 ```
 4. Install system service
 
 ```bash
-sudo /usr/local/bin/pve-config-backup.py --install
+/usr/local/bin/pve-config-backup.py --install
 ```
 
 ## Service Operation
