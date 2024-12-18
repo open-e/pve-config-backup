@@ -13,7 +13,7 @@ apt install python3-psutil
 
 ## Installation
 
-1. Place script at
+1. Place script at:
 ```
 /usr/local/bin/pve-config-backup.py
 ```
@@ -22,21 +22,24 @@ apt install python3-psutil
 cp /root/pve-config-backup.py /usr/local/bin/pve-config-backup.py
 ```
 3. Make script executable:
-
 ```bash
 chmod +x /usr/local/bin/pve-config-backup.py
 ```
 4. Install system service
-
 ```bash
 /usr/local/bin/pve-config-backup.py --install
 ```
 
 ## Service Operation
 
-By default service will backup its data to folder `/mnt/pve/pve-config-backup`.
-User is expected to mount appropriate NFS share to this folder.
-
+By default service will backup its data to folder:
+```
+/mnt/pve/pve-config-backup
+```
+User is expected to add new dataset with NFS share and mount as NFS storage in Proxmox VE: 
+```
+pve-config-backup
+```
 Once preparation is done user can start backup service by running
 ```bash
 /usr/local/bin/pve-config-backup.py --start
