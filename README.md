@@ -13,8 +13,9 @@ apt install python3-psutil
 
 ## Installation
 
-1. Place script at `/usr/local/bin/pve-config-backup.py`
-2. To install the script properly, please run:
+1. Place script at
+   `/usr/local/bin/pve-config-backup.py`
+3. To install the script properly, please run:
 ```bash
 cp /root/pve-config-backup.py /usr/local/bin/pve-config-backup.py
 ```
