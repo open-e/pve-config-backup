@@ -24,17 +24,11 @@ CONFIG = {
     "nfs_base_backup_path": "/mnt/pve/pve-config-backup",
     "config_paths": [
         "/etc/pve",
-        "/etc/containers",
-        "/etc/libvirt",
-        "/etc/storage",
         "/etc/network",
-        "/etc/ceph",
         "/etc/lvm",
         "/etc/multipath",
-        "/var/lib/pve-cluster/config",
-        "/etc/vzdump.conf",
     ],
-    "max_backups": 20,
+    "max_backups": 100,
     "backup_interval": 300,  # 5 minutes in seconds
     "log_file": "/var/log/pve-config-backup.log",
     "log_max_size": 10485760,  # 10MB
