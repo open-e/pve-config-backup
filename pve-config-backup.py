@@ -42,7 +42,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/pve-config-backup.py --start
+ExecStart=/usr/local/bin/pve-config-backup.py --daemon
 Restart=always
 RestartSec=60
 User=root
@@ -65,21 +65,17 @@ WantedBy=multi-user.target
 def setup_logging():
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-
     handlers = [
-        logging.StreamHandler(),
         RotatingFileHandler(
             CONFIG["log_file"],
             maxBytes=CONFIG["log_max_size"],
             backupCount=CONFIG["log_backup_count"]
         )
     ]
-
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     for handler in handlers:
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-
     return logger
 
 
@@ -104,11 +100,8 @@ def check_script_location():
 def install_service():
     """Install systemd service."""
     try:
-        # Create service file
         with open(SYSTEMD_PATH, 'w') as f:
             f.write(SYSTEMD_SERVICE_CONTENT)
-
-        # Reload systemd and enable service
         subprocess.run(['systemctl', 'daemon-reload'], check=True)
         subprocess.run(['systemctl', 'enable', SERVICE_NAME], check=True)
         print("Service installed successfully")
@@ -121,14 +114,10 @@ def install_service():
 def uninstall_service():
     """Remove systemd service."""
     try:
-        # Stop and disable service
         subprocess.run(['systemctl', 'stop', SERVICE_NAME], check=False)
         subprocess.run(['systemctl', 'disable', SERVICE_NAME], check=False)
-
-        # Remove service file
         if os.path.exists(SYSTEMD_PATH):
             os.remove(SYSTEMD_PATH)
-
         subprocess.run(['systemctl', 'daemon-reload'], check=True)
         print("Service uninstalled successfully")
         return True
@@ -155,56 +144,47 @@ def create_backup_dir():
     hostname = get_hostname()
     backup_dir = os.path.join(CONFIG["nfs_base_backup_path"], hostname)
     os.makedirs(backup_dir, exist_ok=True)
-    logger.info(f"Backup directory ensured: {backup_dir}")
     return backup_dir
 
 
 def check_nfs_mount():
     if not os.path.ismount(CONFIG["nfs_base_backup_path"]):
-        logger.error(
-            f"NFS path {CONFIG['nfs_base_backup_path']} is not mounted")
         return False
     return True
 
 
 def perform_rsync(source, dest):
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
     backup_path = os.path.join(dest, f"config_backup_{timestamp}")
     os.makedirs(backup_path)
 
-    for config_path in source:
-        if os.path.exists(config_path):
-            try:
-                cmd = ["rsync", "-rtDvz", "--relative",
-                       "--stats", config_path, backup_path]
-                subprocess.run(cmd, check=True)
-                logger.info(f"Backed up {config_path}")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to backup {config_path}: {e}")
-        else:
-            logger.warning(f"Config path does not exist: {config_path}")
-
-    return backup_path
+    # Quiet mode for rsync
+    cmd_base = ["rsync", "-rtDq", "--relative"]
+    try:
+        for config_path in source:
+            if os.path.exists(config_path):
+                cmd = cmd_base + [config_path, backup_path]
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return backup_path, True
+    except subprocess.CalledProcessError:
+        return backup_path, False
 
 
 def rotate_backups(backup_dir):
     backups = sorted(glob.glob(os.path.join(
         backup_dir, "config_backup_*")), reverse=True)
-    logger.info(f"Found {len(backups)} existing backups")
 
     if len(backups) > CONFIG["max_backups"]:
         for old_backup in backups[CONFIG["max_backups"]:]:
             try:
                 shutil.rmtree(old_backup)
-                logger.info(f"Removed old backup: {old_backup}")
-            except Exception as e:
-                logger.error(f"Failed to remove backup {old_backup}: {e}")
+            except Exception:
+                pass
 
 
 def stop_service():
     """Stop the running service."""
     try:
-        # First try systemctl stop
         subprocess.run(['systemctl', 'stop', SERVICE_NAME], check=True)
         print("Service stopped via systemctl")
         return True
@@ -215,7 +195,7 @@ def stop_service():
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     cmdline = proc.info.get('cmdline', [])
-                    if cmdline and script_name in cmdline[0] and '--start' in cmdline:
+                    if cmdline and script_name in cmdline[0] and '--daemon' in cmdline:
                         os.kill(proc.info['pid'], signal.SIGTERM)
                         print(f"Process with PID { proc.info['pid']} has been stopped")
                         return True
@@ -228,26 +208,43 @@ def stop_service():
             return False
 
 
+def show_info():
+    """Show the most recent backups."""
+    hostname = get_hostname()
+    backup_host_dir = os.path.join(CONFIG["nfs_base_backup_path"], hostname)
+
+    # If no hostname folder or no backups found, print accordingly
+    if not os.path.isdir(backup_host_dir):
+        print("No backups found.")
+        return
+
+    backups = sorted(glob.glob(os.path.join(backup_host_dir, "config_backup_*")), reverse=True)
+
+    print("the most recent config backup:")
+    print(f"    {backup_host_dir}")
+
+    if backups:
+        for backup in backups[:5]:
+            print(f"        {os.path.basename(backup)}")
+    else:
+        print("        No backups found.")
+
+
 def run_daemon():
-    """Run the backup daemon."""
-    logger.info("Starting config backup service")
-
     while True:
-        try:
-            if not check_nfs_mount():
-                time.sleep(CONFIG["backup_interval"])
-                continue
-
+        if check_nfs_mount():
             backup_dir = create_backup_dir()
-            perform_rsync(CONFIG["config_paths"], backup_dir)
+            backup_path, success = perform_rsync(CONFIG["config_paths"], backup_dir)
             rotate_backups(backup_dir)
 
-            logger.info(f"Backup cycle completed")
-            time.sleep(CONFIG["backup_interval"])
+            if success:
+                logger.info("Backup completed successfully")
+            else:
+                logger.info("Backup failed")
+        else:
+            logger.info("NFS not mounted, skipping backup cycle")
 
-        except Exception as e:
-            logger.error(f"Backup cycle failed: {e}")
-            time.sleep(CONFIG["backup_interval"])
+        time.sleep(CONFIG["backup_interval"])
 
 
 def main():
@@ -260,29 +257,44 @@ def main():
     parser.add_argument('--status', action='store_true',
                         help='Show service status')
     parser.add_argument('--start', action='store_true',
-                        help='Start backup daemon')
+                        help='Start and enable the systemd service')
     parser.add_argument('--stop', action='store_true',
-                        help='Stop backup daemon')
+                        help='Stop the systemd service')
+    parser.add_argument('--daemon', action='store_true',
+                        help='Run the backup daemon (used by systemd)')
+    parser.add_argument('--info', action='store_true',
+                        help='Show recent backup folders')
 
     args = parser.parse_args()
 
     # Check script location first
     check_script_location()
 
-    # Handle command line arguments
     if args.install:
         install_service()
     elif args.uninstall:
         uninstall_service()
     elif args.status:
         get_service_status()
-    elif args.start:
-        run_daemon()
     elif args.stop:
         stop_service()
+    elif args.start:
+        # If user calls --start, run systemctl commands and exit
+        try:
+            subprocess.run(['systemctl', 'enable', SERVICE_NAME], check=True)
+            subprocess.run(['systemctl', 'start', SERVICE_NAME], check=True)
+            print("Service started and enabled successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to start/enable service: {e}")
+    elif args.daemon:
+        # Run the daemon (called by systemd)
+        run_daemon()
+    elif args.info:
+        show_info()
     else:
         parser.print_help()
 
 
 if __name__ == "__main__":
     main()
+    
