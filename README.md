@@ -31,7 +31,7 @@ chmod +x /usr/local/bin/pve-config-backup.py
 
 ## Service Operation
 
-By default service will backup its data to folder `/mnt/pve-config-backup`.
+By default service will backup its data to folder `/mnt/pve/pve-config-backup`.
 User is expected to mount appropriate NFS share to this folder.
 
 Once preparation is done user can start backup service by running
