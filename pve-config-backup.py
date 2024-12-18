@@ -21,7 +21,7 @@ SERVICE_NAME = "pve-config-backup"
 
 # Configuration
 CONFIG = {
-    "nfs_base_backup_path": "/mnt/pve-config-backup",
+    "nfs_base_backup_path": "/mnt/pve/pve-config-backup",
     "config_paths": [
         "/etc/pve",
         "/etc/containers",
@@ -223,8 +223,7 @@ def stop_service():
                     cmdline = proc.info.get('cmdline', [])
                     if cmdline and script_name in cmdline[0] and '--start' in cmdline:
                         os.kill(proc.info['pid'], signal.SIGTERM)
-                        print(f"Process with PID {
-                              proc.info['pid']} has been stopped")
+                        print(f"Process with PID { proc.info['pid']} has been stopped")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
