@@ -1,0 +1,9 @@
+[Unit]
+Description=Check pve-config-backup service health and report in case of inactivity
+
+
+[Timer]
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

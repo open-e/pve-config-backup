@@ -1,0 +1,8 @@
+#!/bin/bash
+
+HEALTHSERVICE="pve-config-backup-health-cehck"
+BACKUPSERVICE="pve-config-backup"
+
+if ! systemctl is-active --quiet "$BACKUPSERVICE"; then
+    /usr/bin/logger -t "$BACKUPSERVICE" "PVE backup sevice is inactive"
+fi

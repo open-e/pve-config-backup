@@ -1,0 +1,7 @@
+[Unit]
+Description=Check if the nginx service is running
+After=pve-config-backup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pve-config-backup-health-check
