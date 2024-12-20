@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
+
 import os
 import shutil
 import socket
@@ -164,7 +165,8 @@ def perform_rsync(source, dest):
         for config_path in source:
             if os.path.exists(config_path):
                 cmd = cmd_base + [config_path, backup_path]
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return backup_path, True
     except subprocess.CalledProcessError:
         return backup_path, False
@@ -195,9 +197,12 @@ def stop_service():
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     cmdline = proc.info.get('cmdline', [])
-                    if cmdline and script_name in cmdline[0] and '--daemon' in cmdline:
+                    if (cmdline and
+                            script_name in cmdline[0] and
+                            '--daemon' in cmdline):
                         os.kill(proc.info['pid'], signal.SIGTERM)
-                        print(f"Process with PID { proc.info['pid']} has been stopped")
+                        print(f"Process with PID {proc.info['pid']}"
+                              "has been stopped")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -218,7 +223,8 @@ def show_info():
         print("No backups found.")
         return
 
-    backups = sorted(glob.glob(os.path.join(backup_host_dir, "config_backup_*")), reverse=True)
+    backups = sorted(glob.glob(os.path.join(
+        backup_host_dir, "config_backup_*")), reverse=True)
 
     print("the most recent config backup:")
     print(f"    {backup_host_dir}")
@@ -234,7 +240,8 @@ def run_daemon():
     while True:
         if check_nfs_mount():
             backup_dir = create_backup_dir()
-            backup_path, success = perform_rsync(CONFIG["config_paths"], backup_dir)
+            backup_path, success = perform_rsync(
+                CONFIG["config_paths"], backup_dir)
             rotate_backups(backup_dir)
 
             if success:
@@ -297,4 +304,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
