@@ -1,5 +1,4 @@
-#!/usr/bin/python3
-
+#!/usr/bin/env python3
 import os
 import shutil
 import socket
@@ -99,13 +98,14 @@ def check_script_location():
 
 
 def install_service():
-    """Install systemd service."""
+    """Install, enable, and start the systemd service."""
     try:
         with open(SYSTEMD_PATH, 'w') as f:
             f.write(SYSTEMD_SERVICE_CONTENT)
         subprocess.run(['systemctl', 'daemon-reload'], check=True)
         subprocess.run(['systemctl', 'enable', SERVICE_NAME], check=True)
-        print("Service installed successfully")
+        subprocess.run(['systemctl', 'start', SERVICE_NAME], check=True)
+        print("Service installed, enabled, and started successfully")
         return True
     except Exception as e:
         print(f"Failed to install service: {e}")
@@ -165,8 +165,7 @@ def perform_rsync(source, dest):
         for config_path in source:
             if os.path.exists(config_path):
                 cmd = cmd_base + [config_path, backup_path]
-                subprocess.run(
-                    cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return backup_path, True
     except subprocess.CalledProcessError:
         return backup_path, False
@@ -197,12 +196,9 @@ def stop_service():
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                 try:
                     cmdline = proc.info.get('cmdline', [])
-                    if (cmdline and
-                            script_name in cmdline[0] and
-                            '--daemon' in cmdline):
+                    if cmdline and script_name in cmdline[0] and '--daemon' in cmdline:
                         os.kill(proc.info['pid'], signal.SIGTERM)
-                        print(f"Process with PID {proc.info['pid']}"
-                              "has been stopped")
+                        print(f"Process with PID { proc.info['pid']} has been stopped")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -223,10 +219,9 @@ def show_info():
         print("No backups found.")
         return
 
-    backups = sorted(glob.glob(os.path.join(
-        backup_host_dir, "config_backup_*")), reverse=True)
+    backups = sorted(glob.glob(os.path.join(backup_host_dir, "config_backup_*")), reverse=True)
 
-    print("the most recent config backup:")
+    print("The most recent config backup(s):")
     print(f"    {backup_host_dir}")
 
     if backups:
@@ -240,8 +235,7 @@ def run_daemon():
     while True:
         if check_nfs_mount():
             backup_dir = create_backup_dir()
-            backup_path, success = perform_rsync(
-                CONFIG["config_paths"], backup_dir)
+            backup_path, success = perform_rsync(CONFIG["config_paths"], backup_dir)
             rotate_backups(backup_dir)
 
             if success:
@@ -258,13 +252,13 @@ def main():
     parser = argparse.ArgumentParser(
         description='Proxmox VE Configuration Backup Service')
     parser.add_argument('--install', action='store_true',
-                        help='Install systemd service')
+                        help='Install, enable, and start the systemd service')
     parser.add_argument('--uninstall', action='store_true',
                         help='Remove systemd service')
     parser.add_argument('--status', action='store_true',
                         help='Show service status')
     parser.add_argument('--start', action='store_true',
-                        help='Start and enable the systemd service')
+                        help='Start the systemd service')
     parser.add_argument('--stop', action='store_true',
                         help='Stop the systemd service')
     parser.add_argument('--daemon', action='store_true',
@@ -286,13 +280,12 @@ def main():
     elif args.stop:
         stop_service()
     elif args.start:
-        # If user calls --start, run systemctl commands and exit
+        # If user calls --start, just start the service
         try:
-            subprocess.run(['systemctl', 'enable', SERVICE_NAME], check=True)
             subprocess.run(['systemctl', 'start', SERVICE_NAME], check=True)
-            print("Service started and enabled successfully")
+            print("Service started successfully")
         except subprocess.CalledProcessError as e:
-            print(f"Failed to start/enable service: {e}")
+            print(f"Failed to start service: {e}")
     elif args.daemon:
         # Run the daemon (called by systemd)
         run_daemon()
