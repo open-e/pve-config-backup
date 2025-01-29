@@ -22,11 +22,9 @@ SERVICE_NAME = "pve-config-backup"
 # Configuration
 CONFIG = {
     "nfs_base_backup_path": "/mnt/pve/pve-config-backup",
+    # Only back up /etc/pve/nodes
     "config_paths": [
-        "/etc/pve",
-        "/etc/network",
-        "/etc/lvm",
-        "/etc/multipath",
+        "/etc/pve/nodes",
     ],
     "max_backups": 100,
     "backup_interval": 300,  # 5 minutes in seconds
@@ -172,9 +170,10 @@ def perform_rsync(source, dest):
 
 
 def rotate_backups(backup_dir):
-    backups = sorted(glob.glob(os.path.join(
-        backup_dir, "config_backup_*")), reverse=True)
-
+    backups = sorted(
+        glob.glob(os.path.join(backup_dir, "config_backup_*")),
+        reverse=True
+    )
     if len(backups) > CONFIG["max_backups"]:
         for old_backup in backups[CONFIG["max_backups"]:]:
             try:
@@ -198,7 +197,7 @@ def stop_service():
                     cmdline = proc.info.get('cmdline', [])
                     if cmdline and script_name in cmdline[0] and '--daemon' in cmdline:
                         os.kill(proc.info['pid'], signal.SIGTERM)
-                        print(f"Process with PID { proc.info['pid']} has been stopped")
+                        print(f"Process with PID {proc.info['pid']} has been stopped")
                         return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -214,12 +213,14 @@ def show_info():
     hostname = get_hostname()
     backup_host_dir = os.path.join(CONFIG["nfs_base_backup_path"], hostname)
 
-    # If no hostname folder or no backups found, print accordingly
     if not os.path.isdir(backup_host_dir):
         print("No backups found.")
         return
 
-    backups = sorted(glob.glob(os.path.join(backup_host_dir, "config_backup_*")), reverse=True)
+    backups = sorted(
+        glob.glob(os.path.join(backup_host_dir, "config_backup_*")),
+        reverse=True
+    )
 
     print("The most recent config backup(s):")
     print(f"    {backup_host_dir}")
@@ -250,7 +251,8 @@ def run_daemon():
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Proxmox VE Configuration Backup Service')
+        description='Proxmox VE Configuration Backup Service'
+    )
     parser.add_argument('--install', action='store_true',
                         help='Install, enable, and start the systemd service')
     parser.add_argument('--uninstall', action='store_true',
@@ -280,14 +282,12 @@ def main():
     elif args.stop:
         stop_service()
     elif args.start:
-        # If user calls --start, just start the service
         try:
             subprocess.run(['systemctl', 'start', SERVICE_NAME], check=True)
             print("Service started successfully")
         except subprocess.CalledProcessError as e:
             print(f"Failed to start service: {e}")
     elif args.daemon:
-        # Run the daemon (called by systemd)
         run_daemon()
     elif args.info:
         show_info()
