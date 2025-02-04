@@ -1,46 +1,31 @@
 # pve-config-backup
 
-Automated backups of Proxmox VE configuration files to NFS storage.
+Automated backups of Proxmox VE VM & CT configuration files using NFS and LVM storage.
 
 All following commands are expected to be run with administrative privilages.
-
-## Before Install
-
-Package `python3-psutil` have to be installed for plugin to work.
-```bash
-apt install python3-psutil
-```
 
 ## Installation
 
 1. Place script at:
 ```
-/usr/local/bin/pve-config-backup.py
+/usr/local/sbin/pve-config-backup
 ```
-3. To install the script properly, please run:
+2. Make script executable:
 ```bash
-cp /root/pve-config-backup.py /usr/local/bin/pve-config-backup.py
+chmod +x /usr/local/sbin/pve-config-backup
 ```
-3. Make script executable:
+3. Run it to get the help
 ```bash
-chmod +x /usr/local/bin/pve-config-backup.py
+pve-config-backup
 ```
 4. Install system service
 ```bash
-/usr/local/bin/pve-config-backup.py --install
+pve-config-backup --install
 ```
 
 ## Service Operation
 
-By default service will backup its data to folder:
-```
-/mnt/pve/pve-config-backup
-```
-User is expected to add new dataset with NFS share and mount as NFS storage in Proxmox VE: 
-```
-pve-config-backup
-```
-Once preparation is done user can start backup service by running
-```bash
-/usr/local/bin/pve-config-backup.py --start
-```
+For VM and CT stored in NFS Storage:
+  the service will backup VM and CT conf files into VM or CT virtual disk folder in /mnt/pve
+For VM and CT stored in LVM Storage:
+  the service will backup VM and CT conf files into disk folder in /mnt/pve-config-backup-<lvm-volume-group-of-vm-ct-virtual-disk>
