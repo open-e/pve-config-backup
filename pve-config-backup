@@ -22,7 +22,7 @@ SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 
-WATCH_TIMEOUT="${WATCH_TIMEOUT:-60}"
+WATCH_TIMEOUT="${WATCH_TIMEOUT:-3600}"
 
 usage() {
   cat <<EOF
