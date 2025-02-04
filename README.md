@@ -26,8 +26,10 @@ pve-config-backup --install
 ## Service Operation
 
 For VM and CT stored in NFS Storage:
-  ```the service will backup VM and CT conf files into VM or CT virtual disk folder in /mnt/pve
+```
+  the service will backup VM and CT conf files into VM or CT virtual disk folder in /mnt/pve
 ```
 For VM and CT stored in LVM Storage:
-  ```the service will backup VM and CT conf files into disk folder in /mnt/pve-config-backup-<lvm-volume-group-of-vm-ct-virtual-disk>
+```
+  the service will backup VM and CT conf files into disk folder in /mnt/pve-config-backup-<lvm-volume-group-of-vm-ct-virtual-disk>
 ```
