@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+#
+# pve-config-backup: Backup Proxmox VE .conf files (QEMU VMs & LXC CTs)
+# using inotify to watch for changes or a timeout.
+#
+# Key points in this version:
+#   - A single helper function, get_conf_files_for_id(), finds all .conf files
+#     referencing "vm-<ID>-disk" in /etc/pve/nodes/*/(qemu-server|lxc).
+#   - The NFS backup section enumerates /mnt/pve/*/images/<ID> folders and calls the helper.
+#   - The LVM backup section enumerates LVs (extracting the ID from names like vm-100-disk-0),
+#     then calls the helper. Each matching config file is copied to the destination
+#     using its original filename.
+#   - LVM volumes are mounted if not already mounted and are NOT unmounted.
+#   - The script waits (up to 60 tries) at boot for /etc/pve/nodes/*/(qemu-server|lxc)
+#     directories to become available.
+#   - It uses set +e / set -e around inotifywait so that timeouts do not cause an exit.
+#   - An initial backup is performed on service start before entering the inotify loop.
+
+set -euo pipefail
+
+SCRIPT_NAME="pve-config-backup"
+SERVICE_NAME="pve-config-backup.service"
+SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
+
+WATCH_TIMEOUT="${WATCH_TIMEOUT:-60}"
+
+usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [options]
+
+Proxmox VE Configuration Backup (inotify-based)
+
+Options:
+  -h, --help       Show this help message and exit
+  --install        Install, enable, and start the systemd service
+  --uninstall      Remove the systemd service
+  --status         Show the service status
+  --start          Start the systemd service
+  --stop           Stop the systemd service
+  --daemon         Run the backup daemon in the foreground (used by systemd)
+  --info           Show recent backup info
+  --debug          Enable debug output
+EOF
+}
+
+SERVICE_UNIT_CONTENT="[Unit]
+Description=Proxmox VE Configuration Backup Service (inotify-based)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/pve-config-backup
+ExecStart=/usr/local/sbin/${SCRIPT_NAME} --daemon
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+"
+
+install_service() {
+  echo "${SERVICE_UNIT_CONTENT}" > "${SERVICE_PATH}"
+  systemctl daemon-reload
+  systemctl enable "${SERVICE_NAME}"
+  systemctl start "${SERVICE_NAME}"
+  echo "Installation complete and service started."
+}
+
+uninstall_service() {
+  systemctl stop "${SERVICE_NAME}" || true
+  systemctl disable "${SERVICE_NAME}" || true
+  rm -f "${SERVICE_PATH}"
+  systemctl daemon-reload
+  echo "Uninstall complete."
+}
+
+start_service() {
+  systemctl start "${SERVICE_NAME}"
+  echo "Systemd service started."
+}
+
+stop_service() {
+  systemctl stop "${SERVICE_NAME}"
+  echo "Systemd service stopped."
+}
+
+status_service() {
+  systemctl status "${SERVICE_NAME}" || true
+}
+
+check_dependencies() {
+  local -a cmds=("inotifywait" "rsync" "lvs" "lvcreate" "mkfs.ext4" "mount" "umount")
+  for cmd in "${cmds[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "[ERROR] Required command not found: $cmd" >&2
+      exit 1
+    fi
+  done
+}
+
+RSYNC_OPTS="-a --no-o --no-g --no-p --delete"
+
+# Helper: find all .conf files referencing "vm-<ID>-disk" in Proxmox configuration
+get_conf_files_for_id() {
+  local id="$1"
+  grep -El "vm-${id}-disk" /etc/pve/nodes/*/qemu-server/*.conf /etc/pve/nodes/*/lxc/*.conf 2>/dev/null || true
+}
+
+###############################################################################
+# NFS Backup Logic
+###############################################################################
+backup_nfs_configs() {
+  echo "[INFO] NFS: Searching for directories in /mnt/pve/*/images/* ..."
+  for path in /mnt/pve/*/images/*; do
+    [ -d "$path" ] || continue
+    local id="${path##*/}"
+    local conf_files
+    readarray -t conf_files < <(get_conf_files_for_id "$id")
+    if [ ${#conf_files[@]} -eq 0 ]; then
+      echo "[WARN] NFS: No .conf referencing vm-$id-disk found."
+      continue
+    fi
+    for conf_file in "${conf_files[@]}"; do
+      echo "[INFO] NFS: Copying conf $conf_file -> $path"
+      rsync $RSYNC_OPTS "$conf_file" "$path/" || \
+        echo "[ERROR] Failed rsync NFS conf for ID $id to $path"
+    done
+  done
+}
+
+###############################################################################
+# LVM Backup Logic
+###############################################################################
+create_config_backup_lv_if_missing() {
+  local vg="$1"
+  local lv="config-backup"
+  local lvpath="/dev/${vg}/${lv}"
+  if [ -e "${lvpath}" ]; then
+    return 0
+  fi
+  echo "[INFO] LVM: Creating LV '${lv}' in VG='${vg}' (size=1G as example)..."
+  if ! lvcreate -n "${lv}" -L 1G "${vg}"; then
+    echo "[ERROR] lvcreate failed for VG=${vg}, skipping."
+    return 1
+  fi
+  echo "[INFO] LVM: Formatting LV with ext4 at ${lvpath}..."
+  if ! mkfs.ext4 "${lvpath}"; then
+    echo "[ERROR] mkfs.ext4 failed for ${lvpath}, skipping."
+    return 1
+  fi
+}
+
+is_mounted() {
+  local mount_path="$1"
+  mount | grep -q "on ${mount_path} "
+}
+
+backup_lvm_configs() {
+  echo "[INFO] LVM: Checking for LVs matching 'vm-<ID>-disk-*'..."
+  local lvs_out
+  lvs_out=$(lvs --noheadings --options lv_name,vg_name 2>/dev/null || true)
+  while read -r line; do
+    [[ -z "$line" ]] && continue
+    local lv_name vg
+    lv_name=$(awk '{print $1}' <<< "$line")
+    vg=$(awk '{print $2}' <<< "$line")
+    if [[ "$lv_name" =~ ^vm-([0-9]+)-disk- ]]; then
+      local id="${BASH_REMATCH[1]}"
+      if ! create_config_backup_lv_if_missing "$vg"; then
+        echo "[WARN] Could not create/prepare config-backup LV in $vg, skipping."
+        continue
+      fi
+      local lvpath="/dev/${vg}/config-backup"
+      local mount_path="/mnt/pve-config-backup-${vg}"
+      mkdir -p "$mount_path"
+      if ! is_mounted "$mount_path"; then
+        echo "[INFO] LVM: Mounting $lvpath -> $mount_path"
+        if ! mount "$lvpath" "$mount_path"; then
+          echo "[ERROR] Failed to mount $lvpath at $mount_path; skipping ID=$id on VG=$vg."
+          continue
+        fi
+      fi
+      local conf_files
+      readarray -t conf_files < <(get_conf_files_for_id "$id")
+      if [ ${#conf_files[@]} -eq 0 ]; then
+        echo "[WARN] LVM: No .conf referencing vm-$id-disk found."
+        continue
+      fi
+      for cf in "${conf_files[@]}"; do
+        local base
+        base=$(basename "$cf")
+        echo "[INFO] LVM: Copying conf $cf -> ${mount_path}/${base}"
+        if ! rsync $RSYNC_OPTS "$cf" "${mount_path}/${base}"; then
+          echo "[ERROR] Failed rsync LVM conf for file $cf to $mount_path"
+        fi
+      done
+    fi
+  done <<< "$lvs_out"
+}
+
+###############################################################################
+# Full Backup Routine
+###############################################################################
+do_backup() {
+  backup_nfs_configs
+  backup_lvm_configs
+}
+
+###############################################################################
+# Daemon with Inotify
+###############################################################################
+wait_for_pve_dirs() {
+  local tries=60
+  local found=0
+  for ((i=1; i<=tries; i++)); do
+    local watch_dirs=()
+    for d in /etc/pve/nodes/*/qemu-server /etc/pve/nodes/*/lxc; do
+      [ -d "$d" ] && watch_dirs+=("$d")
+    done
+    if [ ${#watch_dirs[@]} -gt 0 ]; then
+      found=1
+      break
+    fi
+    sleep 5
+  done
+  return $found
+}
+
+build_watch_dirs() {
+  local dirs=()
+  for d in /etc/pve/nodes/*/qemu-server /etc/pve/nodes/*/lxc; do
+    [ -d "$d" ] && dirs+=("$d")
+  done
+  echo "${dirs[@]}"
+}
+
+run_inotify_daemon() {
+  trap "echo '[INFO] Caught stop signal, exiting...'; exit 0" SIGINT SIGTERM
+  if ! wait_for_pve_dirs; then
+    echo "[WARN] /etc/pve/nodes/*/(qemu-server|lxc) not found after waiting. We'll still proceed."
+  fi
+  echo "[INFO] Performing initial backup before entering inotify loop..."
+  do_backup
+  local watch_dirs
+  watch_dirs=( $(build_watch_dirs) )
+  local last_event=""
+  while true; do
+    set +e
+    event=$(inotifywait -t "$WATCH_TIMEOUT" -e close_write "${watch_dirs[@]}" 2>&1)
+    ret=$?
+    set -e
+    if [ $ret -eq 0 ]; then
+      if [[ "$event" != "$last_event" ]]; then
+        do_backup
+        last_event="$event"
+      fi
+    elif [ $ret -eq 1 ] || [ $ret -eq 2 ]; then
+      do_backup
+      last_event=""
+      sleep "$WATCH_TIMEOUT"
+    else
+      echo "$(date '+%Y-%m-%d %H:%M:%S') [ERROR] in inotify loop: ret=$ret, output: $event" >&2
+      sleep "$WATCH_TIMEOUT"
+    fi
+  done
+}
+
+###############################################################################
+# Show Backup Info (Placeholder)
+###############################################################################
+show_backup_info() {
+  echo "Recent backup info:"
+  ls -l /mnt/pve/*/images/*/*.conf 2>/dev/null || true
+  echo "LVM Backup volumes (if still mounted):"
+  ls -l /mnt/pve-config-backup-* 2>/dev/null || true
+}
+
+###############################################################################
+# Main Argument Parser
+###############################################################################
+main() {
+  local args=("$@")
+  if [[ ${#args[@]} -eq 0 ]]; then
+    usage
+    exit 0
+  fi
+  case "${args[0]}" in
+    -h|--help)
+      usage
+      ;;
+    --install)
+      install_service
+      ;;
+    --uninstall)
+      uninstall_service
+      ;;
+    --status)
+      status_service
+      ;;
+    --start)
+      start_service
+      ;;
+    --stop)
+      stop_service
+      ;;
+    --daemon)
+      check_dependencies
+      run_inotify_daemon
+      ;;
+    --info)
+      show_backup_info
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
