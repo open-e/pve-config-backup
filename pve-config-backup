@@ -39,7 +39,6 @@ Options:
   --stop           Stop the systemd service
   --daemon         Run the backup daemon in the foreground (used by systemd)
   --info           Show recent backup info
-  --debug          Enable debug output
 EOF
 }
 
