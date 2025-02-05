@@ -265,12 +265,12 @@ run_inotify_daemon() {
 }
 
 ###############################################################################
-# Show Backup Info (Placeholder)
+# Show Backup Info
 ###############################################################################
 show_backup_info() {
-  echo "Recent backup info:"
+  echo "Recent backup of conf files stored on NFS Storage:"
   ls -l /mnt/pve/*/images/*/*.conf 2>/dev/null || true
-  echo "LVM Backup volumes (if still mounted):"
+  echo "Conf files stored on LVM volumes:"
   ls -l /mnt/pve-config-backup-* 2>/dev/null || true
 }
 
