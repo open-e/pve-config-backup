@@ -9,8 +9,8 @@ Copy & Paste in the Proxmox VE shell:
 ```bash
 wget https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-backup \
     -O /usr/local/sbin/pve-config-backup; \
-    chmod +x /usr/local/sbin/pve-config-backup \
-    pve-config-backup --install \
+    chmod +x /usr/local/sbin/pve-config-backup; \
+    pve-config-backup --install; \
     pve-config-backup --info
 ```
 
