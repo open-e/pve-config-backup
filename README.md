@@ -10,6 +10,10 @@ All following commands are expected to be run with administrative privilages.
 ```
 /usr/local/sbin/pve-config-backup
 ```
+```bash
+wget https://github.com/open-e/pve-config-backup/blob/main/pve-config-backup -O /usr/local/sbin/pve-config-backup
+```
+
 2. Make script executable:
 ```bash
 chmod +x /usr/local/sbin/pve-config-backup
