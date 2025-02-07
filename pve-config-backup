@@ -138,7 +138,7 @@ create_config_backup_lv_if_missing() {
     return 0
   fi
   echo "[INFO] LVM: Creating LV '${lv}' in VG='${vg}' (size=1G as example)..."
-  if ! lvcreate -n "${lv}" -L 1G "${vg}"; then
+  if ! lvcreate --yes -n "${lv}" -L 1G "${vg}"; then
     echo "[ERROR] lvcreate failed for VG=${vg}, skipping."
     return 1
   fi
