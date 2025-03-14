@@ -51,7 +51,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=-/etc/default/pve-config-backup
 ExecStart=/usr/local/sbin/${SCRIPT_NAME} --daemon
-Restart=on-failure
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
@@ -210,19 +210,20 @@ do_backup() {
 ###############################################################################
 wait_for_pve_dirs() {
   local tries=60
-  local found=0
   for ((i=1; i<=tries; i++)); do
     local watch_dirs=()
     for d in /etc/pve/nodes/*/qemu-server /etc/pve/nodes/*/lxc; do
       [ -d "$d" ] && watch_dirs+=("$d")
     done
     if [ ${#watch_dirs[@]} -gt 0 ]; then
-      found=1
-      break
+      # found them, return success
+      return 0
     fi
     sleep 5
   done
-  return $found
+
+  # if we looped through and never found them, return "failure"
+  return 1
 }
 
 build_watch_dirs() {
