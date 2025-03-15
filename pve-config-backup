@@ -88,13 +88,34 @@ status_service() {
 }
 
 check_dependencies() {
-  local -a cmds=("inotifywait" "rsync" "lvs" "lvcreate" "mkfs.ext4" "mount" "umount")
-  for cmd in "${cmds[@]}"; do
+  # Map each command to its corresponding package name.
+  local -A package_map=(
+    ["inotifywait"]="inotify-tools"
+    ["rsync"]="rsync"
+    ["lvs"]="lvm2"
+    ["lvcreate"]="lvm2"
+    ["mkfs.ext4"]="e2fsprogs"
+    ["mount"]="util-linux"
+    ["umount"]="util-linux"
+  )
+
+  # Use an associative array to avoid duplicate package names.
+  declare -A missing_packages=()
+  for cmd in "${!package_map[@]}"; do
     if ! command -v "$cmd" &>/dev/null; then
-      echo "[ERROR] Required command not found: $cmd" >&2
-      exit 1
+      missing_packages["${package_map[$cmd]}"]=1
     fi
   done
+
+  if (( ${#missing_packages[@]} > 0 )); then
+    local packages=("${!missing_packages[@]}")
+    echo "[INFO] Installing missing packages: ${packages[*]}"
+    # Update package list and install the missing packages.
+    apt-get update && apt-get install -y "${packages[@]}" || {
+      echo "[ERROR] Failed to install required packages. Please install them manually." >&2
+      exit 1
+    }
+  fi
 }
 
 RSYNC_OPTS="-a --no-o --no-g --no-p --delete"
