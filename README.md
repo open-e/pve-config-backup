@@ -29,13 +29,13 @@ pve-config-backup
 ```
 4. Install system service
 ```bash
-pve-config-backup --install
+pve-config-backup install
 ```
 
 ## Service Operation
 Check backup status:
 ```bash
-pve-config-backup --info
+pve-config-backup info
 ```
 For VM and CT stored in NFS Storage:
 ```
