@@ -1,6 +1,6 @@
 # pve-config-backup
 
-Automated backups of Proxmox VE VM & CT configuration files using NFS and LVM storage.
+Automated backups of Proxmox VE VM & CT configuration files using NFS storage.
 
 All following commands are expected to be run with administrative privilages.
 
@@ -11,7 +11,7 @@ wget https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-
     -O /usr/local/sbin/pve-config-backup; \
     chmod +x /usr/local/sbin/pve-config-backup; \
     pve-config-backup install; \
-    pve-config-backup info
+    pve-config-backup help
 ```
 
 Or run step-by-setp manully:
