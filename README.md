@@ -13,36 +13,11 @@ wget https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-
     pve-config-backup install; \
     pve-config-backup help
 ```
-
-Or run step-by-setp manully:
-1. Place script at:
-```
-/usr/local/sbin/pve-config-backup
-```
-2. Make script executable:
-```bash
-chmod +x /usr/local/sbin/pve-config-backup
-```
-3. Run it to get the help
+Run it to get the latest backup details and logs.
 ```bash
 pve-config-backup
 ```
-4. Install system service
+Get help:
 ```bash
-pve-config-backup install
-```
-
-## Service Operation
-Check backup status:
-```bash
-pve-config-backup info
-```
-For VM and CT stored in NFS Storage:
-```
-  the service will backup VM and CT conf files into VM or CT virtual disk folder in /mnt/pve
-```
-For VM and CT stored in LVM Storage:
-```
-  the service will backup VM and CT conf files into disk folder in
-  /mnt/pve-config-backup-<lvm-volume-group-of-vm-ct-virtual-disk>
+pve-config-backup help
 ```
