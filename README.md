@@ -13,7 +13,7 @@ wget https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-
     pve-config-backup install; \
     pve-config-backup help
 ```
-Run it to get the latest backup details and logs.
+Run it to get the latest backup details and logs:
 ```bash
 pve-config-backup
 ```
