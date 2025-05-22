@@ -180,13 +180,16 @@ check_dependencies() {
   fi
 }
 
-# Helper: find all .conf files referencing "vm-<ID>-disk" in Proxmox configuration
+# Helper: find all .conf files referencing disks for a given ID
+# Supports both VM (vm-<ID>-disk) and LXC (subvol-<ID>-disk) naming schemes.
 get_conf_files_for_id() {
   local id="$1"
-  local search_pattern="vm-${id}-disk"
-  
-  # Build a more careful search to avoid false positives
-  grep -El "\b${search_pattern}\b" /etc/pve/nodes/*/qemu-server/*.conf /etc/pve/nodes/*/lxc/*.conf 2>/dev/null || true
+  local search_pattern="(vm-${id}-disk|subvol-${id}-disk)"
+
+  # Build a careful search to avoid false positives
+  grep -El "\b${search_pattern}\b" \
+    /etc/pve/nodes/*/qemu-server/*.conf \
+    /etc/pve/nodes/*/lxc/*.conf 2>/dev/null || true
 }
 
 ###############################################################################
