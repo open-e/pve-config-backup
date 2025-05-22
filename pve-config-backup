@@ -79,7 +79,7 @@ SERVICE_UNIT_CONTENT="[Unit]
 Description=Proxmox VE Configuration Backup Service (inotify-based)
 After=network-online.target
 Wants=network-online.target
-Documentation=https://github.com/yourusername/pve-config-backup
+Documentation=https://github.com/open-e/pve-config-backup
 
 [Service]
 Type=simple
