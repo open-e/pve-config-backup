@@ -29,6 +29,7 @@
 
 set -euo pipefail
 
+VERSION="1.00"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
@@ -70,6 +71,7 @@ Commands:
   daemon          Run the backup daemon in the foreground (used by systemd)
   info            Show recent backup info
   config          Create default configuration file
+  version         Show version information
 
 If no command is provided, the script will display backup info.
 EOF
@@ -181,15 +183,22 @@ check_dependencies() {
 }
 
 # Helper: find all .conf files referencing disks for a given ID
-# Supports both VM (vm-<ID>-disk) and LXC (subvol-<ID>-disk) naming schemes.
+# Supports both VM and LXC disk configurations with proper device pattern matching
 get_conf_files_for_id() {
   local id="$1"
-  local search_pattern="(vm-${id}-disk|subvol-${id}-disk)"
 
-  # Build a careful search to avoid false positives
-  grep -El "\b${search_pattern}\b" \
+  # Define device type patterns
+  BUS_DEVS="(?:scsi|ide|sata|virtio|efidisk|tpmstate|nvme)"    # needs digits
+  LXC_DEVS="(?:rootfs|mp[0-9]+)"                               # already valid
+  DEVICE_PATTERN="(?:${LXC_DEVS}|${BUS_DEVS}[0-9]+)"           # combine the two
+
+  # Pattern to match disk references in config files
+  DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
+
+  grep -lP "${DISK_PATTERN}" \
     /etc/pve/nodes/*/qemu-server/*.conf \
-    /etc/pve/nodes/*/lxc/*.conf 2>/dev/null || true
+    /etc/pve/nodes/*/lxc/*.conf \
+    2>/dev/null || true
 }
 
 ###############################################################################
@@ -411,6 +420,9 @@ main() {
       ;;
     config)
       create_default_config
+      ;;
+    version)
+      echo "${SCRIPT_NAME} version ${VERSION}"
       ;;
     *)
       usage
