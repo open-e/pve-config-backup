@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-VERSION="1.00"
+VERSION="1.01"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
@@ -186,6 +186,7 @@ check_dependencies() {
 # Supports both VM and LXC disk configurations with proper device pattern matching
 get_conf_files_for_id() {
   local id="$1"
+  log "DEBUG" "get_conf_files_for_id: Searching for config files referencing ID $id"
 
   # Define device type patterns
   BUS_DEVS="(?:scsi|ide|sata|virtio|efidisk|tpmstate|nvme)"    # needs digits
@@ -194,55 +195,131 @@ get_conf_files_for_id() {
 
   # Pattern to match disk references in config files
   DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
+  log "DEBUG" "get_conf_files_for_id: Using pattern: ${DISK_PATTERN}"
 
-  grep -lP "${DISK_PATTERN}" \
+  # Search for config files
+  local search_paths=("/etc/pve/nodes/*/qemu-server/*.conf" "/etc/pve/nodes/*/lxc/*.conf")
+  log "DEBUG" "get_conf_files_for_id: Searching in paths: ${search_paths[*]}"
+  
+  local found_files
+  found_files=$(grep -lP "${DISK_PATTERN}" \
     /etc/pve/nodes/*/qemu-server/*.conf \
     /etc/pve/nodes/*/lxc/*.conf \
-    2>/dev/null || true
+    2>/dev/null || true)
+  
+  if [[ -n "$found_files" ]]; then
+    log "DEBUG" "get_conf_files_for_id: Found config files for ID $id:"
+    while IFS= read -r file; do
+      log "DEBUG" "  - $file"
+    done <<< "$found_files"
+  else
+    log "DEBUG" "get_conf_files_for_id: No config files found for ID $id"
+  fi
+  
+  echo "$found_files"
 }
 
 ###############################################################################
 # NFS Backup Logic
 ###############################################################################
 backup_nfs_configs() {
-  log "INFO" "NFS: Searching for directories in backup paths..."
+  log "INFO" "NFS: Starting backup process"
+  log "DEBUG" "NFS: BACKUP_DIRS configuration: ${BACKUP_DIRS[*]}"
   local processed_count=0
   local success_count=0
+  local total_dirs_found=0
   
   for backup_dir in "${BACKUP_DIRS[@]}"; do
+    log "DEBUG" "NFS: Expanding backup directory pattern: $backup_dir"
+    
+    # Count how many directories match this pattern
+    local pattern_matches=0
     for path in $backup_dir; do
+      if [[ -d "$path" ]]; then
+        pattern_matches=$((pattern_matches + 1))
+      fi
+    done
+    log "DEBUG" "NFS: Pattern '$backup_dir' matched $pattern_matches directories"
+    
+    for path in $backup_dir; do
+      log "DEBUG" "NFS: Checking path: $path"
       if [[ ! -d "$path" ]]; then
+        log "DEBUG" "NFS: Path does not exist or is not a directory: $path"
         continue
       fi
       
+      total_dirs_found=$((total_dirs_found + 1))
       local id="${path##*/}"
+      log "DEBUG" "NFS: Processing directory for ID: $id (path: $path)"
       processed_count=$((processed_count + 1))
       
-      local conf_files
-      readarray -t conf_files < <(get_conf_files_for_id "$id")
+      # Check if this ID directory actually contains VM disk files
+      local disk_files
+      disk_files=$(find "$path" -maxdepth 1 -name "vm-$id-disk-*" 2>/dev/null || true)
+      if [[ -n "$disk_files" ]]; then
+        log "DEBUG" "NFS: Found disk files for ID $id in $path:"
+        while IFS= read -r disk_file; do
+          log "DEBUG" "  - $disk_file"
+        done <<< "$disk_files"
+      else
+        log "DEBUG" "NFS: No vm-$id-disk-* files found in $path"
+      fi
+      
+      local conf_files_output
+      conf_files_output=$(get_conf_files_for_id "$id")
+      
+      local conf_files=()
+      if [[ -n "$conf_files_output" ]]; then
+        while IFS= read -r line; do
+          if [[ -n "$line" ]]; then
+            conf_files+=("$line")
+          fi
+        done <<< "$conf_files_output"
+      fi
+      
+      log "DEBUG" "NFS: get_conf_files_for_id returned ${#conf_files[@]} files for ID $id"
       
       if [[ ${#conf_files[@]} -eq 0 ]]; then
-        log "WARN" "NFS: No .conf referencing vm-$id-disk found."
+        log "WARN" "NFS: No .conf files referencing vm-$id-disk found. This might be a stale directory."
+        log "DEBUG" "NFS: Checking if $path contains only non-VM files (leftover configs from deleted VMs)"
+        local all_files
+        all_files=$(find "$path" -maxdepth 1 -name "*.conf" 2>/dev/null || true)
+        if [[ -n "$all_files" ]]; then
+          log "DEBUG" "NFS: Found .conf files in $path that don't belong to active VMs:"
+          while IFS= read -r orphan_file; do
+            log "DEBUG" "  - $orphan_file (orphaned config)"
+          done <<< "$all_files"
+        fi
         continue
       fi
       
       for conf_file in "${conf_files[@]}"; do
+        if [[ -z "$conf_file" ]]; then
+          log "DEBUG" "NFS: Skipping empty conf_file entry"
+          continue
+        fi
+        
         if [[ ! -f "$conf_file" ]]; then
           log "WARN" "NFS: Config file no longer exists: $conf_file"
           continue
         fi
         
-        log "INFO" "NFS: Copying conf $conf_file -> $path"
+        local conf_basename="${conf_file##*/}"
+        log "INFO" "NFS: Copying conf $conf_file -> $path/$conf_basename"
+        log "DEBUG" "NFS: rsync command: rsync $RSYNC_OPTS \"$conf_file\" \"$path/\""
+        
         if rsync $RSYNC_OPTS "$conf_file" "$path/"; then
           success_count=$((success_count + 1))
+          log "DEBUG" "NFS: Successfully copied $conf_file to $path"
         else
-          log "ERROR" "Failed rsync NFS conf for ID $id to $path"
+          log "ERROR" "Failed rsync NFS conf for ID $id from $conf_file to $path"
         fi
       done
     done
   done
   
-  log "INFO" "NFS: Backup complete. Processed $processed_count VMs/CTs, $success_count successful backups."
+  log "INFO" "NFS: Backup complete. Found $total_dirs_found total directories, processed $processed_count VMs/CTs, $success_count successful backups."
+  log "DEBUG" "NFS: Backup process finished"
 }
 
 ###############################################################################
