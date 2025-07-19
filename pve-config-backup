@@ -30,6 +30,7 @@
 set -euo pipefail
 
 VERSION="1.01"
+RELEASE_DATE="2025-07-19"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
@@ -559,7 +560,7 @@ main() {
       create_default_config
       ;;
     version)
-      echo "${SCRIPT_NAME} version ${VERSION}"
+      echo "${SCRIPT_NAME} version ${VERSION} (${RELEASE_DATE})"
       ;;
     *)
       usage
