@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-VERSION="1.00"
+VERSION="1.01"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
@@ -189,12 +189,12 @@ get_conf_files_for_id() {
   log "DEBUG" "get_conf_files_for_id: Searching for config files referencing ID $id"
 
   # Define device type patterns
-  BUS_DEVS="(?:scsi|ide|sata|virtio|efidisk|tpmstate|nvme)"    # needs digits
-  LXC_DEVS="(?:rootfs|mp[0-9]+)"                               # already valid
-  DEVICE_PATTERN="(?:${LXC_DEVS}|${BUS_DEVS}[0-9]+)"           # combine the two
+  local BUS_DEVS="(?:scsi|ide|sata|virtio|efidisk|tpmstate|nvme)"    # needs digits
+  local LXC_DEVS="(?:rootfs|mp[0-9]+)"                               # already valid
+  local DEVICE_PATTERN="(?:${LXC_DEVS}|${BUS_DEVS}[0-9]+)"           # combine the two
 
   # Pattern to match disk references in config files
-  DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
+  local DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
   log "DEBUG" "get_conf_files_for_id: Using pattern: ${DISK_PATTERN}"
 
   # Search for config files
@@ -217,6 +217,63 @@ get_conf_files_for_id() {
   fi
   
   echo "$found_files"
+}
+
+###############################################################################
+# Orphan Config Cleanup
+###############################################################################
+remove_orphan_conf_files() {
+  log "INFO" "ORPHAN: Starting orphan configuration cleanup"
+  local cleanup_count=0
+  
+  for backup_dir in "${BACKUP_DIRS[@]}"; do
+    for path in $backup_dir; do
+      if [[ ! -d "$path" ]]; then
+        continue
+      fi
+      
+      find "$path" \
+        -type d -name ".nfs" -prune -o \
+        -type f -name "*.conf" -print | while read -r conf; do
+        if [[ -z "$conf" ]]; then
+          continue
+        fi
+        
+        local dir=$(dirname "$conf")
+        local folder=$(basename "$dir")
+        local vmid=$(basename "$conf" .conf)
+        
+        # Check for bad location
+        if [[ "$folder" != "$vmid" ]]; then
+          log "WARN" "ORPHAN: Bad location detected: $conf"
+          log "INFO" "ORPHAN: Removing misplaced config file: $conf"
+          if rm -f "$conf"; then
+            log "INFO" "ORPHAN: Successfully removed misplaced file: $conf"
+          else
+            log "ERROR" "ORPHAN: Failed to remove misplaced file: $conf"
+          fi
+          continue
+        fi
+        
+        # Check for missing disk file using nullglob
+        shopt -s nullglob
+        local matches=("$dir"/vm-"$vmid"-disk-*.qcow2 "$dir"/vm-"$vmid"-disk-*.raw "$dir"/vm-"$vmid"-disk-*.vmdk)
+        shopt -u nullglob
+        
+        if [[ ${#matches[@]} -eq 0 ]]; then
+          log "WARN" "ORPHAN: No disk files found for config: $conf"
+          log "INFO" "ORPHAN: Removing orphaned config file: $conf"
+          if rm -f "$conf"; then
+            log "INFO" "ORPHAN: Successfully removed orphaned file: $conf"
+          else
+            log "ERROR" "ORPHAN: Failed to remove orphaned file: $conf"
+          fi
+        fi
+      done
+    done
+  done
+  
+  log "INFO" "ORPHAN: Cleanup complete"
 }
 
 ###############################################################################
@@ -320,6 +377,9 @@ backup_nfs_configs() {
   
   log "INFO" "NFS: Backup complete. Found $total_dirs_found total directories, processed $processed_count VMs/CTs, $success_count successful backups."
   log "DEBUG" "NFS: Backup process finished"
+  
+  # Run orphan cleanup after backup
+  remove_orphan_conf_files
 }
 
 ###############################################################################
