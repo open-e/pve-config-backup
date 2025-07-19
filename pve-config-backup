@@ -29,7 +29,7 @@
 
 set -euo pipefail
 
-VERSION="1.01"
+VERSION="1.00"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
