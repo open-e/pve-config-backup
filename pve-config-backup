@@ -73,6 +73,7 @@ Commands:
   info            Show recent backup info
   config          Create default configuration file
   version         Show version information
+  update          Check for and install script updates from GitHub
 
 If no command is provided, the script will display backup info.
 EOF
@@ -483,6 +484,120 @@ run_inotify_daemon() {
 }
 
 ###############################################################################
+# Update Functions
+###############################################################################
+check_for_updates() {
+  log "INFO" "Checking for updates..."
+  local remote_url="https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-backup"
+  local temp_file
+  temp_file=$(mktemp)
+  
+  if ! wget -q -O "$temp_file" "$remote_url"; then
+    log "ERROR" "Failed to fetch remote version. Check network connectivity."
+    rm -f "$temp_file"
+    return 2
+  fi
+  
+  local remote_version
+  remote_version=$(grep '^VERSION=' "$temp_file" | head -1 | cut -d'"' -f2)
+  rm -f "$temp_file"
+  
+  if [[ -z "$remote_version" ]]; then
+    log "ERROR" "Could not parse remote version"
+    return 2
+  fi
+  
+  log "INFO" "Current version: $VERSION"
+  log "INFO" "Remote version: $remote_version"
+  
+  if [[ "$VERSION" != "$remote_version" ]]; then
+    log "INFO" "Update available: $VERSION -> $remote_version"
+    return 0
+  else
+    log "INFO" "Already running latest version"
+    return 1
+  fi
+}
+
+update_script() {
+  log "INFO" "Starting script update process..."
+  local remote_url="https://raw.githubusercontent.com/open-e/pve-config-backup/main/pve-config-backup"
+  local script_path="$0"
+  local backup_path="${script_path}.backup.${VERSION}"
+  local temp_path
+  temp_path=$(mktemp)
+  
+  # Create backup of current version
+  if ! cp "$script_path" "$backup_path"; then
+    log "ERROR" "Failed to create backup at $backup_path"
+    rm -f "$temp_path"
+    return 1
+  fi
+  log "INFO" "Created backup: $backup_path"
+  
+  # Download new version
+  log "INFO" "Downloading update from $remote_url"
+  if ! wget -q -O "$temp_path" "$remote_url"; then
+    log "ERROR" "Failed to download update"
+    rm -f "$temp_path"
+    return 1
+  fi
+  
+  # Verify downloaded file
+  if [[ ! -s "$temp_path" ]]; then
+    log "ERROR" "Downloaded file is empty"
+    rm -f "$temp_path"
+    return 1
+  fi
+  
+  # Install new version
+  if ! cp "$temp_path" "$script_path"; then
+    log "ERROR" "Failed to install update, restoring backup"
+    cp "$backup_path" "$script_path"
+    rm -f "$temp_path"
+    return 1
+  fi
+  
+  chmod +x "$script_path"
+  rm -f "$temp_path"
+  
+  log "INFO" "Update completed successfully"
+  return 0
+}
+
+perform_update() {
+  check_for_updates
+  local ret=$?
+  
+  if [[ $ret -eq 1 ]]; then
+    echo "Already running the latest version ($VERSION)"
+    return 0
+  elif [[ $ret -eq 2 ]]; then
+    echo "Failed to check for updates"
+    return 1
+  fi
+  
+  echo "Update available for $SCRIPT_NAME"
+  echo "Current version: $VERSION"
+  echo -n "Do you want to update? [y/N]: "
+  read -r response
+  
+  if [[ "$response" =~ ^[Yy]$ ]]; then
+    if update_script; then
+      echo "Update completed successfully!"
+      echo "Please restart any running services if needed."
+      return 0
+    else
+      echo "Update failed. Check logs for details."
+      return 1
+    fi
+  else
+    echo "Update cancelled"
+    return 1
+  fi
+}
+
+###############################################################################
 # Show Backup Info
 ###############################################################################
 show_backup_info() {
@@ -561,6 +676,9 @@ main() {
       ;;
     version)
       echo "${SCRIPT_NAME} version ${VERSION} (${RELEASE_DATE})"
+      ;;
+    update)
+      perform_update
       ;;
     *)
       usage
