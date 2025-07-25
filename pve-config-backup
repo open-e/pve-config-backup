@@ -29,8 +29,8 @@
 
 set -euo pipefail
 
-VERSION="1.02"
-RELEASE_DATE="2025-07-19"
+VERSION="1.03"
+RELEASE_DATE="2025-07-25"
 SCRIPT_NAME="pve-config-backup"
 SERVICE_NAME="pve-config-backup.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
@@ -42,7 +42,7 @@ RSYNC_OPTS="-a --no-o --no-g --no-p --delete"
 BACKUP_DIRS=("/mnt/pve/*/images/*")
 MAX_RETRIES=60
 RETRY_WAIT=5
-DEBUG_MODE=true
+DEBUG_MODE=false
 
 # Load configuration if exists
 if [[ -f "${CONFIG_FILE}" ]]; then
@@ -352,7 +352,9 @@ get_conf_files_for_id() {
   local DEVICE_PATTERN="(?:${LXC_DEVS}|${BUS_DEVS}[0-9]+)"           # combine the two
 
   # Pattern to match disk references in config files
-  local DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
+  # local DISK_PATTERN="^${DEVICE_PATTERN}:[[:space:]]*[^:]+:[0-9]+/vm-${id}-disk-[0-9]+(?:\\.(?:raw|qcow2|vmdk))?"
+  local DISK_PATTERN="^${DEVICE_PATTERN}:\s.+:[0-9]+/vm-${id}-disk-[0-9]"
+  
   log_debug "get_conf_files_for_id: Using pattern: ${DISK_PATTERN}"
 
   # Search for config files
@@ -373,7 +375,7 @@ get_conf_files_for_id() {
   local found_files
   found_files=$(grep -lP "${DISK_PATTERN}" \
     /etc/pve/nodes/*/qemu-server/*.conf \
-    /etc/pve/nodes/*/lxc/*.conf \
+    /etc/pve/nodes/*/lxc/*.conf | grep ${id} \
     2>/dev/null || true)
   
   if [[ -n "$found_files" ]]; then
