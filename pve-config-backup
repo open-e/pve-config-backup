@@ -348,7 +348,7 @@ get_conf_files_for_id() {
 
   # Define device type patterns
   local BUS_DEVS="(?:scsi|ide|sata|virtio|efidisk|tpmstate|nvme)"    # needs digits
-  local LXC_DEVS="(?:rootfs|mp[0-9]+)"                               # already valid
+  local LXC_DEVS="(rootfs|mp[0-9]+)"                               # already valid
   local DEVICE_PATTERN="(?:${LXC_DEVS}|${BUS_DEVS}[0-9]+)"           # combine the two
 
   # Pattern to match disk references in config files
