@@ -325,11 +325,19 @@ check_dependencies() {
 
   if (( ${#missing_packages[@]} > 0 )); then
     local packages=("${!missing_packages[@]}")
+    echo "Missing packages detected: ${packages[*]}"
+    echo "Attempting to install missing packages..."
     log "INFO" "Installing missing packages: ${packages[*]}"
-    apt-get update && apt-get install -y "${packages[@]}" || {
-      log "ERROR" "Failed to install required packages. Please install them manually."
+    
+    if apt-get update && apt-get install -y "${packages[@]}"; then
+      echo "Successfully installed packages: ${packages[*]}"
+      log "INFO" "Successfully installed packages: ${packages[*]}"
+    else
+      echo "ERROR: Failed to install packages: ${packages[*]}"
+      echo "Please install them manually using: apt-get install ${packages[*]}"
+      log "ERROR" "Failed to install required packages: ${packages[*]}. Manual installation required."
       exit 1
-    }
+    fi
   fi
 }
 
