@@ -265,6 +265,9 @@ EOF
 }
 
 install_service() {
+  # Check dependencies before proceeding with installation
+  check_dependencies
+  
   if [[ ! -f "/usr/local/sbin/${SCRIPT_NAME}" ]]; then
     cp "$0" "/usr/local/sbin/${SCRIPT_NAME}"
     chmod +x "/usr/local/sbin/${SCRIPT_NAME}"
@@ -307,6 +310,9 @@ status_service() {
 }
 
 check_dependencies() {
+  # Update package list, continue if it fails
+  apt-get update || true
+  
   # Map each command to its corresponding package name.
   local -A package_map=(
     ["inotifywait"]="inotify-tools"
@@ -329,7 +335,7 @@ check_dependencies() {
     echo "Attempting to install missing packages..."
     log "INFO" "Installing missing packages: ${packages[*]}"
     
-    if apt-get update && apt-get install -y "${packages[@]}"; then
+    if apt-get install -y "${packages[@]}"; then
       echo "Successfully installed packages: ${packages[*]}"
       log "INFO" "Successfully installed packages: ${packages[*]}"
     else
